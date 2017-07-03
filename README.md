@@ -1,3 +1,24 @@
+
+
+Hydra_WaMDaM
+=============
+A plugin to Hydra to import and export water management data that are organized accoroding to WaMDaM method
+
+**logic** 
+Import to Hydra: The plugin will read wamdam data from the WaMDaM excel standard workbook. Then it will load it into HydraPlatform
+Export to WaMDaM: The plugin will write a Hydra network and its data into WaMDaM workbook. Users then can enter additional metadata and register their objects, attributes, and instances with controlled vocabulary. Then they can use the WaMDaM Wizard to load the workbook into a wamdam sqlite database 
+
+
+**Steps to use it:**
+
+1. Install HydraPlatform and run it as described below.
+2. set the path: path\to\HydraLib\python
+3. run WamDamTemplete.py
+
+
+-----------------------------------------------------------------------------------------------------------------------
+
+
 HydraPlatform
 =============
 
