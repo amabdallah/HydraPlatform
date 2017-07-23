@@ -140,8 +140,6 @@ conn.call('add_template', {'tmpl': template})
 
 
 
-# add_network_attrs_from_type
-
 
 
 # add_scenario
@@ -152,7 +150,6 @@ conn.call('add_template', {'tmpl': template})
 
 
 
-# add_node_attrs_from_type
 
 
 
@@ -160,7 +157,6 @@ conn.call('add_template', {'tmpl': template})
 
 
 
-# add_link_attrs_from_type
 
 
 
