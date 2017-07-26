@@ -28,7 +28,7 @@ import os, sys, datetime
 
 #Load the excel file into pandas
 
-wamdam_data = pd.read_excel('WEAP_June12.xlsm', sheetname=None)
+wamdam_data = pd.read_excel('WEAP_small.xlsm', sheetname=None)
 
 #This returns an object, which is a dictionary of pandas 'dataframe'.
 #The keys are sheet names and thrun e dataframes are the sheets themselves.
@@ -126,7 +126,7 @@ for i in range(10):
     #Add some object types to the Template Type  (resource type can be NODE, LINK, GROUP, NETWORK)
     template['types'].append(mytemplatetype)
 
-conn.call('add_template', {'tmpl': template})
+# conn.call('add_template', {'tmpl': template})
 
 
 
@@ -134,29 +134,133 @@ conn.call('add_template', {'tmpl': template})
 
 # Import WaMDaM Network, Scenarios, Nodes, and links
 
-
+# Follow the instructions here
+# http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html
 
 # add_network
 
+network_sheet = wamdam_data['3.1_Networks&Scenarios']
 
-
-
-
-# add_scenario
-
+network_template = {'name': network_sheet.values[8][0], 'description': network_sheet.values[8][4], 'project_id': proj_id}
 
 
 # add_nodes
+nodes_sheet = wamdam_data['3.2_Nodes']
 
+list_node = []
+# Iterate over the node instances and assign the parent Object Attributes to each node instance = ResourceAttribute
+for i in range(nodes_sheet.__len__()):
+    if i < 9: continue
+    node = {'id':i, 'name': nodes_sheet.values[i][1],
+            'description':nodes_sheet.values[i][9], 'x': nodes_sheet.values[i][7], 'y':nodes_sheet.values[i][8]}
+    list_res_attr = []
+    for j in range(attr_sheet.__len__()):
+        if nodes_sheet.values[i][0] == attr_sheet.values[j][0]:
+            name = attr_sheet.values[j][1]
+            dimension = attr_sheet.values[j][3]
 
+            attr = conn.call('get_attribute', ({'name':name, 'dimension':dimension}))
+            if attr.__len__() < 1 :
+                attr = {'name': name, 'dimen': dimension}
+                attr = conn.call('get_attribute', ({'attr':attr}))
 
+            id = None
+            if attr.__len__() < 1:
+                id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})['id']
+            else:
+                id = attr.id
 
+            res_id = len(list_res_attr) + 1
+            res_attr = {'ref_key': 'NODE', 'attr_id': id, 'id': res_id}
+            list_res_attr.append(res_attr)
 
+    node['attributes'] = list_res_attr
+    list_node.append(node)
+network_template['nodes'] = list_node
 
 # add_links
+# Iterate over the link instances and assign the parent Object Attributes to each link instance = Resource Attribute
+
+links_sheet = wamdam_data['3.3_Links']
+list_link = []
+for i in range(links_sheet.__len__()):
+    if i < 9: continue
+    link = {'name': links_sheet.values[i][1], 'description':links_sheet.values[i][9]}
+    for j in range(list_node.__len__()):
+        node_item = list_node[j]
+        # start node in wamdam is node1 in Hydra
+        if node_item['name'] == links_sheet.values[i][6]:
+            link['node_1_id'] = node_item['id']
+            # if link['node_2_id'] != None:
+            #     break
+        elif node_item['name'] == links_sheet.values[i][7]:
+        # end node in wamdam is node2 in Hydra
+
+            link['node_2_id'] = node_item['id']
+            # if link['node_1_id'] != None:
+            #     break
+    list_link.append(link)
+network_template['links'] = list_link
+
+# add_scenario and data
+
+numerical_sheet = wamdam_data['4_NumericValues']
+
+# add the scenario
+list_scenario = []
+for i in range(network_sheet.__len__()):
+    if i < 18: continue
+    if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
+        break
+    scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
+    list_rs = []
+
+    # Iterrate over the rows in the Numeric Values sheet [scalars dataset] and associate the value with resource attribute (node instance and attribute)
+    for j in range(numerical_sheet.__len__()):
+        if network_sheet.values[i ][0] == numerical_sheet.values[j][2]:
+            attr_name = ''
+            dimension = ''
+            for k in range(attr_sheet.__len__()):
+                if numerical_sheet.values[j][3] == attr_sheet.values[k][1]:
+                    attr_name = attr_sheet.values[k][1]
+                    dimension = attr_sheet.values[k][3]
+                    # attr_unit = attr_sheet.values[k][3]
+                    attr = conn.call('get_attribute', ({'name':attr_name, 'dimension':dimension}))
+                    if attr.__len__() < 1:
+                        attr = {'name': attr_name, 'dimen': dimension}
+                        attr = conn.call('get_attribute', ({'attr':attr}))
+
+                    id = None
+                    if attr.__len__() < 1:
+                        id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})['id']
+                    else:
+                        id = attr.id
+
+                    rs = {'resource_attr_id': id}
+
+                    break
+
+            dataset = {'type':'scalar','name': attr_name, 'unit': dimension,'dimension': dimension, # THis must match the dimension of the attribute.
+                'hidden' :'N'}
+
+            
+            value = {'param_value':numerical_sheet.values[j][6]}
+            dataset['value'] = value
+
+            rs['value'] = dataset
+            list_rs.append(rs)
+    # associate the values, resources attributes to their scenario
+    scenario['resourcescenarios'] = list_rs
+    list_scenario.append(scenario)
+network_template['scenarios'] = list_scenario
 
 
+network = conn.call('add_network', {'net':network_template})
+
+# Iterrate over the rows in the 4_DescriptorValuess [timeseries datasets] sheet and associate the value with its scenario, and resource attribute
 
 
+# http://umwrg.github.io/HydraPlatform/devdocs/techdocs/timeseries.html
+# Iterrate over the rows in the 4_TimeSeries [descriptor  dataset] sheet and associate the value with its scenario, and resource attribute
 
 
