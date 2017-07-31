@@ -138,21 +138,37 @@ for i in range(10):
 # http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html
 
 # add_network
-
+#SK:: This should be inside a function called something like 'create network', called from the __main__ function.
 network_sheet = wamdam_data['3.1_Networks&Scenarios']
 
 network_template = {'name': network_sheet.values[8][0], 'description': network_sheet.values[8][4], 'project_id': proj_id}
 
 
+#SK:: You should call get_all_attributes here, and build up a dict by their name. That way you can avoid calling get_attribute a million times.
+
+
 # add_nodes
 nodes_sheet = wamdam_data['3.2_Nodes']
 
-list_node = []
+list_node = []#SK:: Use a dictionary here instead of a list. I usually call it 'node_lookup' or something. Key = node name, value = node object. THen you can easily access the node you want later.
+
+node_lookup = {} #SK:: Added this.
+resource_attr_lookup = {} #SK:: ADDed this
+
 # Iterate over the node instances and assign the parent Object Attributes to each node instance = ResourceAttribute
-for i in range(nodes_sheet.__len__()):
-    if i < 9: continue
-    node = {'id':i, 'name': nodes_sheet.values[i][1],
-            'description':nodes_sheet.values[i][9], 'x': nodes_sheet.values[i][7], 'y':nodes_sheet.values[i][8]}
+for i in range(nodes_sheet.__len__()): #SK:: WHy are you using __len__() instead of len(nodes_sheet)?
+    
+    if i < 9: continue #SK:: Why is this here?
+
+    #SK:: good formatting never hurt anyone
+    node = {'id':i*-1, #SK:: Use a negative ID here. THis will be replaced by a positive ID in Hydra.
+            'name': nodes_sheet.values[i][1],
+            'description':nodes_sheet.values[i][9],
+            'x': str(nodes_sheet.values[i][7]), #SK:: Added str
+            'y': str(nodes_sheet.values[i][8]),#SK:: Added str
+            'types': []#SK:: You should put a dict in here with {'type_id': XXX} to tell Hydra what type of node this is. Same for links below, and the network. A netework must have a type.
+           }
+
     list_res_attr = []
     for j in range(attr_sheet.__len__()):
         if nodes_sheet.values[i][0] == attr_sheet.values[j][0]:
@@ -162,44 +178,58 @@ for i in range(nodes_sheet.__len__()):
             attr = conn.call('get_attribute', ({'name':name, 'dimension':dimension}))
             if attr.__len__() < 1 :
                 attr = {'name': name, 'dimen': dimension}
-                attr = conn.call('get_attribute', ({'attr':attr}))
+                attr = conn.call('get_attribute', ({'attr':attr}))#SK:: WHy are you calling get_attribute twice?
 
-            id = None
+            id = None #SK:: Never use such general variable names. In 10 lines time, you'll forget what 'id' refers to. Use attribute_id or similar
             if attr.__len__() < 1:
                 id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})['id']
             else:
                 id = attr.id
 
-            res_id = len(list_res_attr) + 1
-            res_attr = {'ref_key': 'NODE', 'attr_id': id, 'id': res_id}
+            res_id = (len(list_res_attr) + 1) * -1 #SK:: Hydra automatically assigns IDS. When you need to refer to resource attributes from scenarios before sending them to Hydra, use NEGATIVE ID numbers.
+
+            #SK::
+
+
+            res_attr = { #SK:: Formatting
+                        'ref_key': 'NODE',
+                        'attr_id': id,
+                        'id': res_id
+                       }
+
+            resource_attr_lookup[('NODE', res_id)] = res_attr #SK:: Now you can look up the negative resource_attr_id when processing the scenario by using the resource type (NODE, LINK) and the ID of the resource. You could use any other key you want,d epending on what data you have available to you when processing the scenario data. Doesn't have to be this key. Just an example..
+
             list_res_attr.append(res_attr)
 
     node['attributes'] = list_res_attr
     list_node.append(node)
+    node_lookup[node['name']] = node #SK:: Added this
 network_template['nodes'] = list_node
 
 # add_links
 # Iterate over the link instances and assign the parent Object Attributes to each link instance = Resource Attribute
-
+link_lookup = {}#SK:: Added this. It may be necessary later. 
 links_sheet = wamdam_data['3.3_Links']
 list_link = []
 for i in range(links_sheet.__len__()):
     if i < 9: continue
-    link = {'name': links_sheet.values[i][1], 'description':links_sheet.values[i][9]}
-    for j in range(list_node.__len__()):
-        node_item = list_node[j]
-        # start node in wamdam is node1 in Hydra
-        if node_item['name'] == links_sheet.values[i][6]:
-            link['node_1_id'] = node_item['id']
-            # if link['node_2_id'] != None:
-            #     break
-        elif node_item['name'] == links_sheet.values[i][7]:
-        # end node in wamdam is node2 in Hydra
+    link = {
+        'id': i*-1,#SK:: Added this
+        'name': links_sheet.values[i][1],
+        'description':links_sheet.values[i][9]}
+    node_a = node_lookup.get(links_sheet.values[i][6])
+    if node_a is None:
+        raise Exception("Node %s could not be found"%(links_sheet.values[i][6]))
+    link['node_1_id'] = node_a['id']
+    node_b = node_lookup.get(links_sheet.values[i][7])
+    if node_b is None:
+        raise Exception("Node %s could not be found"%(links_sheet.values[i][6]))
+    link['node_2_id'] = node_b['id']
 
-            link['node_2_id'] = node_item['id']
-            # if link['node_1_id'] != None:
-            #     break
     list_link.append(link)
+    link_lookup[link['name']] = link
+
+#SK:: Should there be link attributes too?
 network_template['links'] = list_link
 
 # add_scenario and data
@@ -209,9 +239,11 @@ numerical_sheet = wamdam_data['4_NumericValues']
 # add the scenario
 list_scenario = []
 for i in range(network_sheet.__len__()):
-    if i < 18: continue
+    if i < 18: continue #SK:: Again, what is this? Needs to be commented to explain or removed.
+
     if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
-        break
+        break #SK:: A log line here to explain why there's no data coming would be useful here.
+
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
@@ -225,7 +257,7 @@ for i in range(network_sheet.__len__()):
                     attr_name = attr_sheet.values[k][1]
                     dimension = attr_sheet.values[k][3]
                     # attr_unit = attr_sheet.values[k][3]
-                    attr = conn.call('get_attribute', ({'name':attr_name, 'dimension':dimension}))
+                    attr = conn.call('get_attribute', ({'name':attr_name, 'dimension':dimension})) #SK:: This is the second time this code has appeared. Put it into a common function, and remove the dupliate get_attribute.
                     if attr.__len__() < 1:
                         attr = {'name': attr_name, 'dimen': dimension}
                         attr = conn.call('get_attribute', ({'attr':attr}))
@@ -236,22 +268,19 @@ for i in range(network_sheet.__len__()):
                     else:
                         id = attr.id
 
-                    rs = {'resource_attr_id': id}
+                    rs = {'resource_attr_id': id} #SK:: the id variable here is an attribute ID, not a resource attr id. You need to get the resource_attr ID from a lookup dict, created above and populated as you're adding attributes to the nodes.
 
                     break
 
             dataset = {'type':'scalar','name': attr_name, 'unit': dimension,'dimension': dimension, # THis must match the dimension of the attribute.
-                'hidden' :'N'}
-
-            
-            value = {'param_value':numerical_sheet.values[j][6]}
-            dataset['value'] = value
+                       'hidden' :'N', 'value': str(numerical_sheet.values[j][6])} 
 
             rs['value'] = dataset
             list_rs.append(rs)
     # associate the values, resources attributes to their scenario
     scenario['resourcescenarios'] = list_rs
     list_scenario.append(scenario)
+
 network_template['scenarios'] = list_scenario
 
 
