@@ -34,6 +34,9 @@ import json
 #Used for working with files.
 import os, sys, datetime
 
+import logging
+log = logging.getLogger(__name__)
+
 
 # STEP 1: connect to the Hydra server
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
@@ -74,17 +77,20 @@ attr_sheet = wamdam_data['2.2_Attributes']
 # The project concept does not exist in WaMDaM but it is needed in Hydra. We define it here
 projects = conn.call('get_projects', {})
 proj_id = 1
-proj_name = "WaMDaM_%s4"
+proj_name = "WaMDaM_%s"
 #Identify the highest project ID number.
 for p in projects:
     if p.name.find('WaMDaM_') == 0:
         try:
-            proj_id = int(p.name.replace('proj_', ''))
+            proj_id = int(p.name.replace('WaMDaM_', ''))
         except:
             continue
 #Add 1 to the hightest proj numner
+log.info(proj_id)
+log.info(proj_name)
 proj_id = proj_id + 1
-my_new_project = conn.call('add_project', {'project': {'name': proj_name%(proj_id,)}})
+my_new_project = conn.call('add_project', {'project': {'name': proj_name%proj_id}})
+
 
 
 # Add the attribute:
@@ -95,6 +101,12 @@ my_new_project = conn.call('add_project', {'project': {'name': proj_name%(proj_i
 # The "AttributeUnit" in WaMDaM is equivalent to "dimension" in Hydra
 # my_new_attr_list = []
 # my_new_attr = conn.call('add_attribute', {'attr': {'name': ['attr'], 'dimension': ['Volume']}})
+
+
+all_attributes = conn.call('get_all_attributes', ({}))
+all_attr_dict = {}
+for a in all_attributes:
+    all_attr_dict[a.name] = {'id':a.id, 'dimension':a.dimen}
 
 
 #-------------------------
@@ -136,9 +148,14 @@ for i in range(10):
         #  attr_sheet.values[j][1]--AttributeName
         #  attr_sheet.values[j][3]--AttributeUnit
         if type_sheet.values[i + 16][0] == attr_sheet.values[j][0]:
-            my_new_attr_id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})['id']
+            attr_name = attr_sheet.values[j][1]
+            attr_dimension = attr_sheet.values[j][3]
+            if all_attr_dict.get(attr_name) is None:
+                attr_id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})['id']
+            else:
+                attr_id = all_attr_dict[attr_name]['id']
             # connect the Template Type (ObjectType) with its Attributes
-            mytemplatetype['typeattrs'].append({'type_id': i + 1, 'attr_id':  my_new_attr_id})  #type_id for the template table
+            mytemplatetype['typeattrs'].append({'type_id': i + 1, 'attr_id':  attr_id})  #type_id for the template table
 
     #--------------------------------------------
 
@@ -150,18 +167,15 @@ for i in range(10):
 
 
 # Build up a dict by attribute names to call them later.
-all_attr_dict = {}
+
 for j in range(len(attr_sheet)):
     if j < 9: continue  # Avoid headers before line 9 in the nodes sheet
     name = attr_sheet.values[j][1]
     dimension = attr_sheet.values[j][3]
-    # Add attributes to the hydra db
-    attr = conn.call('get_attribute', ({'name':name, 'dimension':dimension}))
-    if attr.__len__() < 1 :
+
+    if all_attr_dict.get(name) is None:
         id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})['id']
         all_attr_dict[name] = {'id':id, 'dimension':dimension}
-    else:
-        all_attr_dict[name] = {'id':attr.id, 'dimension':dimension}
 
 
 # STEP 4: Import WaMDaM Network, Nodes, and links
@@ -180,16 +194,16 @@ network_template = {'name': network_sheet.values[8][0], 'description': network_s
 # add_nodes
 nodes_sheet = wamdam_data['3.2_Nodes']
 
-list_node = []# SK:: Use a dictionary here instead of a list. I usually call it 'node_lookup' or something.
-              # Key = node name, value = node object. Then you can easily access the node you want later.
+list_node = []
+            
 
-node_lookup = {} # SK:: Added this.
+node_lookup = {} 
 
-resource_attr_lookup = {} # SK:: Added this
+resource_attr_lookup = {}
 
 type_id = None
 # Iterate over the node instances and assign the parent Object Attributes to each node instance = ResourceAttribute (as in Hydra)
-for i in range(len(nodes_sheet)): #SK:: WHy are you using __len__() instead of len(nodes_sheet)?
+for i in range(len(nodes_sheet)):
     if i < 9: continue  # Avoid headers before line 9 in the nodes sheet
 
     # Look up the type_id in Hydra for each type
@@ -198,13 +212,12 @@ for i in range(len(nodes_sheet)): #SK:: WHy are you using __len__() instead of l
             type_id = template['typeattrs'][0]['type_id']
             break
 
-    node = {'id':i*-1, #SK:: Use a negative ID here. This will be replaced by a positive ID in Hydra.
+    node = {'id':i*-1,
             'name': nodes_sheet.values[i][1],
             'description':nodes_sheet.values[i][9],
-            'x': str(nodes_sheet.values[i][7]), # SK:: Added str
-            'y': str(nodes_sheet.values[i][8]),# SK:: Added str
-            'types': [{'type_id': type_id}]  # SK:: The dict in here with {'type_id': XXX} tells Hydra what type of node this is.
-            # Same for links below, and the network. A network must have a type.
+            'x': str(nodes_sheet.values[i][7]),
+            'y': str(nodes_sheet.values[i][8]),
+            'types': [{'type_id': type_id}]  
            }
 
     list_res_attr = []
@@ -213,37 +226,32 @@ for i in range(len(nodes_sheet)): #SK:: WHy are you using __len__() instead of l
             name = attr_sheet.values[j][1]
             dimension = attr_sheet.values[j][3]
 
-            res_id = (len(list_res_attr) + 1) * -1 #SK:: Hydra automatically assigns IDS.
+            res_id = (len(list_res_attr) + 1) * -1 
             # When you need to refer to resource attributes from scenarios before sending them to Hydra, use NEGATIVE ID numbers.
 
-            res_attr = { #SK:: Formatting
+            res_attr = {
                         'ref_key': 'NODE',
                         'attr_id': all_attr_dict[name]['id'],
                         'id': res_id
                        }
 
             resource_attr_lookup[('NODE', res_id)] = res_attr
-            #SK:: Now you can look up the negative resource_attr_id when processing the scenario by using the resource type (NODE, LINK)
-            # and the ID of the resource. You could use any other key you want,d epending on what data you have available to you
-            # when processing the scenario data. Doesn't have to be this key. Just an example..
 
             list_res_attr.append(res_attr)
 
     node['attributes'] = list_res_attr
     list_node.append(node)
-    node_lookup[node['name']] = node # SK:: Added this
+    node_lookup[node['name']] = node
 network_template['nodes'] = list_node
 
 
-# SK:: Should there be link attributes too?
-# Iterate over the link instances and assign the parent Object Attributes to each link instance = Resource Attribute
-link_lookup = {}# SK:: Added this. It may be necessary later.
+link_lookup = {}
 links_sheet = wamdam_data['3.3_Links']
 list_link = []
 for i in range(len(links_sheet)):
         if i < 9: continue  # Avoid headers before line 9 in the links sheet
         link = {
-            'id': i*-1,  # SK:: Added this
+            'id': i*-1, 
             'name': links_sheet.values[i][1],
             'description':links_sheet.values[i][9]}
         node_a = node_lookup.get(links_sheet.values[i][6])
@@ -290,8 +298,6 @@ for i in range(len(network_sheet)):
 
             attr_name = numerical_sheet.values[j][3]
             dimension = all_attr_dict[attr_name]['dimension']
-            # SK:: the id variable here is an attribute ID, not a resource attr id.
-            # You need to get the resource_attr ID from a lookup dict, created above and populated as you're adding attributes to the nodes.
             rs = {'resource_attr_id': all_attr_dict[numerical_sheet.values[j][3]]['id']}
 
             dataset = {'type':'scalar','name': attr_name, 'unit': dimension,'dimension': dimension,
