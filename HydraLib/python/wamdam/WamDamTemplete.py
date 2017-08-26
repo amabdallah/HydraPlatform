@@ -148,7 +148,7 @@ for i in range(10):
             attr_dimension = attr_sheet.values[j][3]
             if all_attr_dict.get(attr_name) is None:
                 attr_id = conn.call('add_attribute',
-                                    {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})[
+                                    {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][3]}})[
                     'id']
             else:
                 attr_id = all_attr_dict[attr_name]['id']
@@ -183,7 +183,7 @@ for j in range(len(attr_sheet)):
 ## Load the Attributes to the Hydra db
     if all_attr_dict.get(name) is None:
         id = \
-        conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimension': attr_sheet.values[j][3]}})[
+        conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][3]}})[
             'id']
         all_attr_dict[name] = {'id': id, 'dimension': dimension}
 
@@ -480,3 +480,76 @@ network_template['scenarios'] = list_scenario
 # Here Column D in excel starting row 19 has the attribute name that for the whole array (its just like the attribute for the descriptor)
 # Columns G, H,....L, etc starting row 4 in excel have the names of the Array "items" or sub-attributes
 # so each value belongs to an Attribute (array name) and a sub-attribute (array item) under an ObjectType and Instance name
+
+multiAttr_sheet = wamdam_data['4_MultiAttributeSeries']
+#get attribut field count
+con_attributes = {}
+for i in range(3, 12):
+    if multiAttr_sheet.values[i][5] == None or multiAttr_sheet.values[i][5] == "":
+        # If there is no value in network sheet, stop loop.
+        break
+    con_attributes[multiAttr_sheet.values[i][5]] = 0
+    for j in range(6, 11):
+
+        if str(multiAttr_sheet.values[i][j]) == 'nan' or multiAttr_sheet.values[i][j] == "":
+        # If there is no value in network sheet, stop loop.
+            break
+        con_attributes[multiAttr_sheet.values[i][5]] = con_attributes[multiAttr_sheet.values[i][5]] + 1
+
+
+# add the scenario
+list_scenario = []
+for i in range(18, len(network_sheet)):
+    # if i < 9: continue  # Avoid headers before line 9 in the 4_DescriptorValues sheet
+
+    if network_sheet.values[i][0] == None or str(network_sheet.values[i][0]) == "nan":
+        # If there is no value in network sheet, stop loop.
+        break
+
+    scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
+    list_rs = []
+
+    # Iterate over the rows in the Numeric Values sheet [scalars dataset] and associate the value with resource attribute (node instance and attribute)
+    name = '' #multiarray instance name
+    array_value = []
+    for j in range(17, len(multiAttr_sheet)):
+        if network_sheet.values[i][0] == multiAttr_sheet.values[j][2]:
+            if name != multiAttr_sheet.values[j][1]:
+                if len(array_value) > 0:
+                    dimension = all_attr_dict[multiAttr_sheet.values[j][3]]['dimension']
+                    rs = {'resource_attr_id': all_attr_dict[multiAttr_sheet.values[j][3]]['id']}
+
+                    dataset = {'type': 'array', 'name': name, 'unit': dimension, 'dimension': dimension, 'hidden': 'N'}
+                    dataset['value'] = {'arr_data': array_value}
+                    print dataset
+                    dataset['metadata'] = [
+                        { 'name' : 'ObjectType', 'value' : multiAttr_sheet.values[j-1][0]},
+                        { 'name' : 'ScenarioName', 'value' : multiAttr_sheet.values[j-1][2]},
+                        { 'name' : 'SourceName', 'value' : multiAttr_sheet.values[j-1][4]},
+                        { 'name' : 'MethodName', 'value' : multiAttr_sheet.values[j-1][5]}
+                    ]
+
+                    rs['value'] = dataset
+                    list_rs.append(rs)
+
+                name = multiAttr_sheet.values[j][1] # new instance name of multiarray
+                array_value = []
+                for kk in range(1, con_attributes[multiAttr_sheet.values[j][3]] + 1):
+                    templist = []
+                    templist.append(multiAttr_sheet.values[j][5 + kk])
+                    array_value.append(templist)
+
+
+            else:
+                for kk in range(1, con_attributes[multiAttr_sheet.values[j][3]] + 1):
+                    array_value[kk - 1].append(multiAttr_sheet.values[j][5 + kk])
+
+            # The provided dimension here must match the attribute as defined earlier.
+
+            # rs['value'] = dataset
+            # list_rs.append(rs)
+    # associate the values, resources attributes to their scenario
+    scenario['resourcescenarios'] = list_rs
+    list_scenario.append(scenario)
+
+network_template['scenarios'] = list_scenario
