@@ -217,9 +217,12 @@ for i in range(len(nodes_sheet)):
 
     # Look up the type_id in Hydra for each type
     for templateType in template['types']:
-        if nodes_sheet.values[i][1] == templateType['resource_type']:
+        if nodes_sheet.values[i][1] == templateType['name']:
             type_id = template['typeattrs'][0]['type_id']
             break
+
+    if type_id is None:
+        raise Exception("Unable to find a type in the template for %s" % nodes_sheet.values[i][1])
 
     flag = False
     for node_item in list_node:
