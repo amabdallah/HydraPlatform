@@ -20,6 +20,10 @@
 import pandas as pd
 import os
 
+# set the path to the Hydra repository to import its libraries
+import sys
+sys.path.append("C:\Users\Adel\Documents\GitHub\HydraPlatform\HydraServer\HydraLib\python")
+
 import argparse as ap
 
 # Python utility libraries.
@@ -53,7 +57,7 @@ conn.login("root", "")
 
 
 # Load the excel file into pandas
-wamdam_data = pd.read_excel('WEAP_June12.xlsm', sheetname=None)
+wamdam_data = pd.read_excel('./WEAP_Sept18.xlsm', sheetname=None)
 
 # This returns an object, which is a dictionary of pandas 'dataframe'.
 # The keys are sheet names and the dataframes are the sheets themselves.
@@ -130,12 +134,13 @@ my_templates = conn.call('get_template_attributes', {})
 # 2.1_Datasets&ObjectTypes sheet, look in the ObjectTypes_table
 
 # iterate to get the object types and their attributes
-for i in range(10):
-
+for i in range(len(type_sheet)):
+    if type_sheet.values[i + 16][0] == "" or str(type_sheet.values[i + 16][0]) == "nan" :
+        break
     #  type_sheet.values[i + 16][0]--ObjectType
     #  type_sheet.values[i + 16][1]--ObjectTypology
     mytemplatetype = {'resource_type': type_sheet.values[i + 16][1].upper(), 'name': type_sheet.values[i + 16][0],
-                      'typeattrs': []}
+                      'typeattrs': [], 'type_id': i+1}
     #  insert the value of the ObjectTypology from excel. also insert the value of the ObjectType from excel
 
     # -------------------------------------
@@ -168,9 +173,10 @@ flag_exist_template = False
 for template_item in tempDB:
     if template_item['name'] == template['name']:
         flag_exist_template = True
+        conn.call('delete_template', {'template_id' : template_item['id']})
         break
-if not flag_exist_template:
-    conn.call('add_template', {'tmpl': template})
+# if not flag_exist_template:
+conn.call('add_template', {'tmpl': template})
 
 
 # Build up a dict by attribute names to call them later.
@@ -200,7 +206,7 @@ network_sheet = wamdam_data['3.1_Networks&Scenarios']
 network_template = {'name': network_sheet.values[8][0], 'description': network_sheet.values[8][4],
                     'project_id': proj_id}
 
-
+print proj_id
 # add_nodes
 nodes_sheet = wamdam_data['3.2_Nodes']
 
@@ -213,16 +219,18 @@ resource_attr_lookup = {}
 type_id = None
 # Iterate over the node instances and assign the parent Object Attributes to each node instance = ResourceAttribute (as in Hydra)
 for i in range(len(nodes_sheet)):
-    if i < 9: continue  # Avoid headers before line 9 in the nodes sheet
+    if i < 8: continue  # Avoid headers before line 9 in the nodes sheet
 
     # Look up the type_id in Hydra for each type
+    type_id_index = 0
     for templateType in template['types']:
-        if nodes_sheet.values[i][1] == templateType['name']:
-            type_id = template['typeattrs'][0]['type_id']
+        type_id_index += 1
+        if nodes_sheet.values[i][0] == templateType['name']:
+            type_id = type_id_index
             break
 
     if type_id is None:
-        raise Exception("Unable to find a type in the template for %s" % nodes_sheet.values[i][1])
+        raise Exception("Unable to find a type in the template for %s" % nodes_sheet.values[i][0])
 
     flag = False
     for node_item in list_node:
@@ -230,9 +238,12 @@ for i in range(len(nodes_sheet)):
             flag = True
     if flag: continue
 
+    description = str(nodes_sheet.values[i][9])
+    if description == "nan":
+        description = ""
     node = {'id': i * -1,
             'name': nodes_sheet.values[i][1],
-            'description': nodes_sheet.values[i][9],
+            'description': description,
             'x': str(nodes_sheet.values[i][7]),
             'y': str(nodes_sheet.values[i][8]),
             'types': [{'type_id': type_id}]
@@ -247,10 +258,18 @@ for i in range(len(nodes_sheet)):
             res_id = (len(list_res_attr) + 1) * -1
             # When you need to refer to resource attributes from scenarios before sending them to Hydra, use NEGATIVE ID numbers.
 
+             # Look up the type_id in Hydra for each type
+
+            for templateType in template['types']:
+                if attr_sheet.values[j][0] == templateType['name']:
+                    type_id = templateType['type_id']
+                    break
+
             res_attr = {
                 'ref_key': 'NODE',
                 'attr_id': all_attr_dict[name]['id'],
-                'id': res_id
+                'id': res_id,
+                'type_id':type_id
             }
 
             resource_attr_lookup[('NODE', res_id)] = res_attr
@@ -265,12 +284,28 @@ network_template['nodes'] = list_node
 link_lookup = {}
 links_sheet = wamdam_data['3.3_Links']
 list_link = []
+type_id = None
 for i in range(len(links_sheet)):
-    if i < 9: continue  # Avoid headers before line 9 in the links sheet
+    if i < 8: continue  # Avoid headers before line 9 in the links sheet
+
+    type_id_index = 0
+    for templateType in template['types']:
+        type_id_index += 1
+        if links_sheet.values[i][0] == templateType['name']:
+            type_id = type_id_index
+            break
+
+    if type_id is None:
+        raise Exception("Unable to find a type in the template for %s" % links_sheet.values[i][0])
+    description = str(links_sheet.values[i][9])
+    if description == "nan":
+        description = ""
     link = {
         'id': i * -1,
         'name': links_sheet.values[i][1],
-        'description': links_sheet.values[i][9]}
+        'description': description,
+        'types': [{'type_id': type_id}]
+    }
     node_a = node_lookup.get(links_sheet.values[i][6])
     if node_a is None:
         raise Exception("Node %s could not be found" % (links_sheet.values[i][6]))
@@ -303,8 +338,10 @@ for i in range(len(network_sheet)):
     if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
         # If there is no value in network sheet, stop loop.
         break
-
-    scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
+    description = str(network_sheet.values[i][8])
+    if description == "nan":
+        description = ""
+    scenario = {'name': network_sheet.values[i][0], 'description': description, 'resourcescenarios': []}
     list_rs = []
 
     # Working with Datasets in Hydra which are equivalent to DataValues tables in WaMDaM
@@ -332,7 +369,7 @@ for i in range(len(network_sheet)):
     scenario['resourcescenarios'] = list_rs
     list_scenario.append(scenario)
 
-network_template['scenarios'] = list_scenario
+# network_template['scenarios'] = list_scenario
 
 # network = conn.call('add_network', {'net':network_template})
 
@@ -342,14 +379,16 @@ network_template['scenarios'] = list_scenario
 Descriptor_sheet = wamdam_data['4_DescriptorValues']
 
 # add the scenario
-list_scenario = []
+# list_scenario = []
 for i in range(len(network_sheet)):
     if i < 9: continue  # Avoid headers before line 9 in the 4_DescriptorValues sheet
 
     if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
         # If there is no value in network sheet, stop loop.
         break
-
+    description = str(network_sheet.values[i][8])
+    if description == "nan":
+        description = ""
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
@@ -371,7 +410,7 @@ for i in range(len(network_sheet)):
     scenario['resourcescenarios'] = list_rs
     list_scenario.append(scenario)
 
-network_template['scenarios'] = list_scenario
+# network_template['scenarios'] = list_scenario
 
 # ******************************************************************************************************************
 
@@ -381,7 +420,7 @@ network_template['scenarios'] = list_scenario
 Descriptor_sheet = wamdam_data['4_DualValues']
 
 # add the scenario
-list_scenario = []
+# list_scenario = []
 for i in range(len(network_sheet)):
     if i < 9: continue  # Avoid headers before line 9 in the 4_DualValues sheet
 
@@ -389,6 +428,9 @@ for i in range(len(network_sheet)):
         # If there is no value in network sheet, stop loop.
         break
 
+    description = str(network_sheet.values[i][8])
+    if description == "nan":
+        description = ""
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
@@ -410,7 +452,7 @@ for i in range(len(network_sheet)):
     scenario['resourcescenarios'] = list_rs
     list_scenario.append(scenario)
 
-network_template['scenarios'] = list_scenario
+# network_template['scenarios'] = list_scenario
 
 # ********************************************************
 # 5.5 Time Series
@@ -421,13 +463,16 @@ network_template['scenarios'] = list_scenario
 TimeSeriesValues_sheet = wamdam_data['4_TimeSeriesValues']
 
 # add the scenario
-list_scenario = []
+# list_scenario = []
 for i in range(len(network_sheet)):
     if i < 9: continue  # Avoid headers before line 9 in the 4_TimeSeriesValues sheet
     if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
         # If there is no value in network sheet, stop loop.
         break
 
+    description = str(network_sheet.values[i][8])
+    if description == "nan":
+        description = ""
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
@@ -467,7 +512,7 @@ for i in range(len(network_sheet)):
     scenario['resourcescenarios'] = list_rs
     list_scenario.append(scenario)
 
-network_template['scenarios'] = list_scenario
+# network_template['scenarios'] = list_scenario
 
 
 
@@ -501,7 +546,7 @@ for i in range(3, 12):
 
 
 # add the scenario
-list_scenario = []
+# list_scenario = []
 for i in range(18, len(network_sheet)):
     # if i < 9: continue  # Avoid headers before line 9 in the 4_DescriptorValues sheet
 
@@ -509,6 +554,9 @@ for i in range(18, len(network_sheet)):
         # If there is no value in network sheet, stop loop.
         break
 
+    description = str(network_sheet.values[i][8])
+    if description == "nan":
+        description = ""
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
