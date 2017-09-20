@@ -246,9 +246,8 @@ for i in range(len(nodes_sheet)):
             'description': description,
             'x': str(nodes_sheet.values[i][7]),
             'y': str(nodes_sheet.values[i][8]),
-            'types': [{'type_id': type_id}]
+            'types': [{'id': type_id}]
             }
-
     list_res_attr = []
     for j in range(len(attr_sheet)):
         if nodes_sheet.values[i][0] == attr_sheet.values[j][0]:
@@ -256,20 +255,11 @@ for i in range(len(nodes_sheet)):
             dimension = attr_sheet.values[j][3]
 
             res_id = (len(list_res_attr) + 1) * -1
-            # When you need to refer to resource attributes from scenarios before sending them to Hydra, use NEGATIVE ID numbers.
-
-             # Look up the type_id in Hydra for each type
-
-            for templateType in template['types']:
-                if attr_sheet.values[j][0] == templateType['name']:
-                    type_id = templateType['type_id']
-                    break
 
             res_attr = {
                 'ref_key': 'NODE',
                 'attr_id': all_attr_dict[name]['id'],
                 'id': res_id,
-                'type_id':type_id
             }
 
             resource_attr_lookup[('NODE', res_id)] = res_attr
@@ -304,7 +294,7 @@ for i in range(len(links_sheet)):
         'id': i * -1,
         'name': links_sheet.values[i][1],
         'description': description,
-        'types': [{'type_id': type_id}]
+        'types': [{'id': type_id}]
     }
     node_a = node_lookup.get(links_sheet.values[i][6])
     if node_a is None:
@@ -319,6 +309,7 @@ for i in range(len(links_sheet)):
     link_lookup[link['name']] = link
 
 network_template['links'] = list_link
+network_template['resourcegroups'] = []
 
 ## Load the Network, its nodes, and links to the Hydra db
 
