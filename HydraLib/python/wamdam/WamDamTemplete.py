@@ -57,7 +57,7 @@ conn.login("root", "")
 
 
 # Load the excel file into pandas
-wamdam_data = pd.read_excel('./WEAP_Sept18.xlsm', sheetname=None)
+wamdam_data = pd.read_excel('WEAP_Sept22.xlsm', sheetname=None)
 
 # This returns an object, which is a dictionary of pandas 'dataframe'.
 # The keys are sheet names and the dataframes are the sheets themselves.
@@ -215,8 +215,9 @@ list_node = []
 node_lookup = {}
 
 resource_attr_lookup = {}
-
+dict_res_attr = {}
 type_id = None
+res_id = -1
 # Iterate over the node instances and assign the parent Object Attributes to each node instance = ResourceAttribute (as in Hydra)
 for i in range(len(nodes_sheet)):
     if i < 8: continue  # Avoid headers before line 9 in the nodes sheet
@@ -248,25 +249,25 @@ for i in range(len(nodes_sheet)):
             'y': str(nodes_sheet.values[i][8]),
             'types': [{'id': type_id}]
             }
-    list_res_attr = []
+    node_res_attr = []
     for j in range(len(attr_sheet)):
         if nodes_sheet.values[i][0] == attr_sheet.values[j][0]:
             name = attr_sheet.values[j][1]
             dimension = attr_sheet.values[j][3]
 
-            res_id = (len(list_res_attr) + 1) * -1
+            # res_id = (len(list_res_attr) + 1) * -1
 
             res_attr = {
                 'ref_key': 'NODE',
                 'attr_id': all_attr_dict[name]['id'],
                 'id': res_id,
             }
-
+            res_id -= 1
             resource_attr_lookup[('NODE', res_id)] = res_attr
+            node_res_attr.append(res_attr)
+            dict_res_attr[(nodes_sheet.values[i][1], name)] = res_attr
 
-            list_res_attr.append(res_attr)
-
-    node['attributes'] = list_res_attr
+    node['attributes'] = node_res_attr
     list_node.append(node)
     node_lookup[node['name']] = node
 network_template['nodes'] = list_node
@@ -305,6 +306,27 @@ for i in range(len(links_sheet)):
         raise Exception("Node %s could not be found" % (links_sheet.values[i][6]))
     link['node_2_id'] = node_b['id']
 
+
+    # ///// links resource atttribute///////
+    link_res_attr = []
+    for j in range(len(attr_sheet)):
+        if links_sheet.values[i][0] == attr_sheet.values[j][0]:
+            name = attr_sheet.values[j][1]
+            dimension = attr_sheet.values[j][3]
+
+            # res_id = (len(list_res_attr) + 1) * -1
+
+            res_attr = {
+                'ref_key': 'LINK',
+                'attr_id': all_attr_dict[name]['id'],
+                'id': res_id,
+            }
+            res_id -= 1
+            # resource_attr_lookup[('NODE', res_id)] = res_attr
+            link_res_attr.append(res_attr)
+            dict_res_attr[(links_sheet.values[i][1], name)] = res_attr
+    link['attributes'] = link_res_attr
+
     list_link.append(link)
     link_lookup[link['name']] = link
 
@@ -315,7 +337,7 @@ network_template['resourcegroups'] = []
 
 # http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html#scenarios-and-data
 
-network = conn.call('add_network', {'net':network_template})
+# network = conn.call('add_network', {'net':network_template})
 
 
 # STEP 5: Import Scenarios and Data Values of Attributes for Nodes and links
@@ -324,9 +346,9 @@ network = conn.call('add_network', {'net':network_template})
 # 5.1 add the scenario
 list_scenario = []
 for i in range(len(network_sheet)):
-    if i < 9: continue  # Avoid headers before line 9 in the 4_NumericValues sheet
+    if i < 18: continue  # Avoid headers before line 9 in the 4_NumericValues sheet
 
-    if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
+    if network_sheet.values[i][0] == None or str(network_sheet.values[i][0]) == "nan":
         # If there is no value in network sheet, stop loop.
         break
     description = str(network_sheet.values[i][8])
@@ -348,9 +370,12 @@ for i in range(len(network_sheet)):
         if network_sheet.values[i][0] == numerical_sheet.values[j][2]:
             attr_name = numerical_sheet.values[j][3]
             dimension = all_attr_dict[attr_name]['dimension']
-            rs = {'resource_attr_id': all_attr_dict[numerical_sheet.values[j][3]]['id']}
+            if (numerical_sheet.values[j][1], numerical_sheet.values[j][3]) in dict_res_attr.keys():
+                rs = {'resource_attr_id': dict_res_attr[(numerical_sheet.values[j][1], numerical_sheet.values[j][3])]['id']}
+            else:
+                raise Exception("Unable to find resource_attr_id for %s" % numerical_sheet.values[j][3])
 
-            dataset = {'type': 'scalar', 'name': attr_name, 'unit': dimension, 'dimension': dimension,
+            dataset = {'type': 'descriptor', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
                        'hidden': 'N', 'value': str(numerical_sheet.values[j][6])}
             # The provided dimension here must match the attribute as defined earlier.
 
@@ -361,7 +386,7 @@ for i in range(len(network_sheet)):
     list_scenario.append(scenario)
 
 # network_template['scenarios'] = list_scenario
-
+# #
 # network = conn.call('add_network', {'net':network_template})
 
 # ****************************************************
@@ -372,9 +397,9 @@ Descriptor_sheet = wamdam_data['4_DescriptorValues']
 # add the scenario
 # list_scenario = []
 for i in range(len(network_sheet)):
-    if i < 9: continue  # Avoid headers before line 9 in the 4_DescriptorValues sheet
+    if i < 18: continue  # Avoid headers before line 9 in the 4_DescriptorValues sheet
 
-    if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
+    if network_sheet.values[i][0] == None or str(network_sheet.values[i][0]) == "nan":
         # If there is no value in network sheet, stop loop.
         break
     description = str(network_sheet.values[i][8])
@@ -389,20 +414,26 @@ for i in range(len(network_sheet)):
             attr_name = Descriptor_sheet.values[j][3]
             dimension = all_attr_dict[Descriptor_sheet.values[j][3]]['dimension']
 
-            rs = {'resource_attr_id': all_attr_dict[Descriptor_sheet.values[j][3]]['id']}
+            if (Descriptor_sheet.values[j][1], Descriptor_sheet.values[j][3]) in dict_res_attr.keys():
+                rs = {'resource_attr_id': dict_res_attr[(Descriptor_sheet.values[j][1], Descriptor_sheet.values[j][3])]['id']}
+            else:
+                raise Exception("Unable to find resource_attr_id for %s" % Descriptor_sheet.values[j][3])
 
-            dataset = {'type': 'descriptor', 'name': attr_name, 'unit': dimension, 'dimension': dimension,
+            dataset = {'type': 'descriptor', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
                        'hidden': 'N', 'value': Descriptor_sheet.values[j][6]}
             # The provided dimension here must match the attribute as defined earlier.
 
             rs['value'] = dataset
             list_rs.append(rs)
     # associate the values, resources attributes to their scenario
-    scenario['resourcescenarios'] = list_rs
-    list_scenario.append(scenario)
+    for index in range(len(list_scenario)):
+        if list_scenario[index]['name'] == network_sheet.values[i][0]:
+            list_scenario[index]['resourcescenarios'].extend(list_rs)
+    # scenario['resourcescenarios'] = list_rs
+    # list_scenario.append(scenario)
 
 # network_template['scenarios'] = list_scenario
-
+# network = conn.call('add_network', {'net':network_template})
 # ******************************************************************************************************************
 
 # 5.4 Descriptor Values (4_DualValues) (does the same like 2.1 but for another sheet)
@@ -413,9 +444,9 @@ Descriptor_sheet = wamdam_data['4_DualValues']
 # add the scenario
 # list_scenario = []
 for i in range(len(network_sheet)):
-    if i < 9: continue  # Avoid headers before line 9 in the 4_DualValues sheet
+    if i < 18: continue  # Avoid headers before line 9 in the 4_DualValues sheet
 
-    if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
+    if network_sheet.values[i][0] == None or str(network_sheet.values[i][0]) == "nan":
         # If there is no value in network sheet, stop loop.
         break
 
@@ -431,20 +462,26 @@ for i in range(len(network_sheet)):
         if network_sheet.values[i][0] == Descriptor_sheet.values[j][2]:
             attr_name = Descriptor_sheet.values[j][3]
             dimension = all_attr_dict[Descriptor_sheet.values[j][3]]['dimension']
-            rs = {'resource_attr_id': all_attr_dict[Descriptor_sheet.values[j][3]]['id']}
+            if (Descriptor_sheet.values[j][1], Descriptor_sheet.values[j][3]) in dict_res_attr.keys():
+                rs = {'resource_attr_id': dict_res_attr[(Descriptor_sheet.values[j][1], Descriptor_sheet.values[j][3])]['id']}
+            else:
+                raise Exception("Unable to find resource_attr_id for %s" % Descriptor_sheet.values[j][3])
 
-            dataset = {'type': 'descriptor', 'name': attr_name, 'unit': dimension, 'dimension': dimension,
-                       'hidden': 'N', 'value': Descriptor_sheet.values[j][6]}
+            dataset = {'type': 'descriptor', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
+                       'hidden': 'N', 'value': str(Descriptor_sheet.values[j][6])}
             # The provided dimension here must match the attribute as defined earlier.
 
             rs['value'] = dataset
             list_rs.append(rs)
     # associate the values, resources attributes to their scenario
-    scenario['resourcescenarios'] = list_rs
-    list_scenario.append(scenario)
-
+    for index in range(len(list_scenario)):
+        if list_scenario[index]['name'] == network_sheet.values[i][0]:
+            list_scenario[index]['resourcescenarios'].extend(list_rs)
+    # scenario['resourcescenarios'] = list_rs
+    # list_scenario.append(scenario)
+# print list_scenario
 # network_template['scenarios'] = list_scenario
-
+# network = conn.call('add_network', {'net':network_template})
 # ********************************************************
 # 5.5 Time Series
 # Iterate over the rows in the 4_TimeSeriesValues sheet and associate the value with its scenario, and resource attribute
@@ -456,8 +493,8 @@ TimeSeriesValues_sheet = wamdam_data['4_TimeSeriesValues']
 # add the scenario
 # list_scenario = []
 for i in range(len(network_sheet)):
-    if i < 9: continue  # Avoid headers before line 9 in the 4_TimeSeriesValues sheet
-    if network_sheet.values[i][0] == None or network_sheet.values[i][0] == "":
+    if i < 18: continue  # Avoid headers before line 9 in the 4_TimeSeriesValues sheet
+    if network_sheet.values[i][0] == None or str(network_sheet.values[i][0]) == "nan":
         # If there is no value in network sheet, stop loop.
         break
 
@@ -473,13 +510,13 @@ for i in range(len(network_sheet)):
     for j in range(8, len(TimeSeriesValues_sheet)):  # //8: reall value row in sheet
         if network_sheet.values[i][0] == TimeSeriesValues_sheet.values[j][2]:
             attr_name = TimeSeriesValues_sheet.values[j][3]
-            if attr_name in timeseries_list.keys():
-                timeseries_list[attr_name].append(
+            if (TimeSeriesValues_sheet.values[j][1], attr_name) in timeseries_list.keys():
+                timeseries_list[(TimeSeriesValues_sheet.values[j][1], attr_name)].append(
                     (TimeSeriesValues_sheet.values[j][4], TimeSeriesValues_sheet.values[j][5]))
             else:
                 values = []
                 values.append((TimeSeriesValues_sheet.values[j][4], TimeSeriesValues_sheet.values[j][5]))
-                timeseries_list[attr_name] = values
+                timeseries_list[(TimeSeriesValues_sheet.values[j][1], attr_name)] = values
 
     for key in timeseries_list.keys():
         timeseries = {"Header": {}, "0": {}}
@@ -487,24 +524,33 @@ for i in range(len(network_sheet)):
             t = str(time)
             timeseries["0"][t] = value
 
-        timeseries['ts_values'] = json.dumps(timeseries)
+        # timeseries['ts_values'] = json.dumps(timeseries)
 
-        attr_name = key
-        dimension = all_attr_dict[attr_name]['dimension']
-        rs = {'resource_attr_id': all_attr_dict[attr_name]['id']}
+        # attr_name = key
+        dimension = all_attr_dict[key[1]]['dimension']
 
-        dataset = {'type': 'timeseries', 'name': attr_name, 'unit': dimension, 'dimension': dimension,
-                   'hidden': 'N', 'value': timeseries}
+        if key in dict_res_attr.keys():
+            rs = {'resource_attr_id': dict_res_attr[key]['id']}
+        else:
+            raise Exception("Unable to find resource_attr_id for %s" % key)
+
+        # rs = {'resource_attr_id': all_attr_dict[attr_name]['id']}
+
+        dataset = {'type': 'timeseries', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
+                   'hidden': 'N', 'value': json.dumps(timeseries)}
         # The provided dimension here must match the attribute as defined earlier.
 
-    rs['value'] = dataset
-    list_rs.append(rs)
+        rs['value'] = dataset
+        list_rs.append(rs)
     # associate the values, resources attributes to their scenario
-    scenario['resourcescenarios'] = list_rs
-    list_scenario.append(scenario)
-
+    for index in range(len(list_scenario)):
+        if list_scenario[index]['name'] == network_sheet.values[i][0]:
+            list_scenario[index]['resourcescenarios'].extend(list_rs)
+    # scenario['resourcescenarios'] = list_rs
+    # list_scenario.append(scenario)
+# print list_scenario
 # network_template['scenarios'] = list_scenario
-
+# network = conn.call('add_network', {'net':network_template})
 
 
 # ********************************************************
@@ -524,7 +570,7 @@ multiAttr_sheet = wamdam_data['4_MultiAttributeSeries']
 #get attribut field count
 con_attributes = {}
 for i in range(3, 12):
-    if multiAttr_sheet.values[i][5] == None or multiAttr_sheet.values[i][5] == "":
+    if multiAttr_sheet.values[i][5] == None or str(multiAttr_sheet.values[i][5]) == "nan":
         # If there is no value in network sheet, stop loop.
         break
     con_attributes[multiAttr_sheet.values[i][5]] = 0
@@ -551,7 +597,7 @@ for i in range(18, len(network_sheet)):
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
-    # Iterate over the rows in the Numeric Values sheet [scalars dataset] and associate the value with resource attribute (node instance and attribute)
+    # Iterate over the rows in the Array sheet and associate the value with resource attribute (node instance and attribute)
     name = '' #multiarray instance name
     array_value = []
     for j in range(17, len(multiAttr_sheet)):
@@ -561,8 +607,11 @@ for i in range(18, len(network_sheet)):
                     dimension = all_attr_dict[multiAttr_sheet.values[j][3]]['dimension']
                     rs = {'resource_attr_id': all_attr_dict[multiAttr_sheet.values[j][3]]['id']}
 
-                    dataset = {'type': 'array', 'name': name, 'unit': dimension, 'dimension': dimension, 'hidden': 'N'}
-                    dataset['value'] = {'arr_data': array_value}
+                    dataset = {'type': 'array', 'name': name, 'unit': 'ml', 'dimension': dimension, 'hidden': 'N'}
+
+                    # value must be string type. this is the error///////////////////////////////////////////////////
+                    dataset['value'] = array_value
+
                     print dataset
                     dataset['metadata'] = [
                         { 'name' : 'ObjectType', 'value' : multiAttr_sheet.values[j-1][0]},
@@ -591,7 +640,13 @@ for i in range(18, len(network_sheet)):
             # rs['value'] = dataset
             # list_rs.append(rs)
     # associate the values, resources attributes to their scenario
-    scenario['resourcescenarios'] = list_rs
-    list_scenario.append(scenario)
+    for index in range(len(list_scenario)):
+        if list_scenario[index]['name'] == network_sheet.values[i][0]:
+            list_scenario[index]['resourcescenarios'].extend(list_rs)
+    # scenario['resourcescenarios'] = list_rs
+    # list_scenario.append(scenario)
 
+print list_scenario
 network_template['scenarios'] = list_scenario
+
+network = conn.call('add_network', {'net':network_template})
