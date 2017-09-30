@@ -597,7 +597,7 @@ for i in range(18, len(network_sheet)):
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
-    # Iterate over the rows in the Array sheet and associate the value with resource attribute (node instance and attribute)
+    # Iterate over the rows in the Numeric Values sheet [scalars dataset] and associate the value with resource attribute (node instance and attribute)
     name = '' #multiarray instance name
     array_value = []
     for j in range(17, len(multiAttr_sheet)):
@@ -605,20 +605,21 @@ for i in range(18, len(network_sheet)):
             if name != multiAttr_sheet.values[j][1]:
                 if len(array_value) > 0:
                     dimension = all_attr_dict[multiAttr_sheet.values[j][3]]['dimension']
-                    rs = {'resource_attr_id': all_attr_dict[multiAttr_sheet.values[j][3]]['id']}
 
-                    dataset = {'type': 'array', 'name': name, 'unit': 'ml', 'dimension': dimension, 'hidden': 'N'}
+                    if (multiAttr_sheet.values[j][1], multiAttr_sheet.values[j][3]) in dict_res_attr.keys():
+                        rs = {'resource_attr_id': dict_res_attr[(multiAttr_sheet.values[j][1], multiAttr_sheet.values[j][3])]['id']}
+                    else:
+                        raise Exception("Unable to find resource_attr_id for %s" % Descriptor_sheet.values[j][3])
+                    dataset = {'type': 'array', 'name': multiAttr_sheet.values[j][3], 'unit': 'ml', 'dimension': dimension, 'hidden': 'N'}
 
-                    # value must be string type. this is the error///////////////////////////////////////////////////
-                    dataset['value'] = array_value
-
-                    print dataset
-                    dataset['metadata'] = [
-                        { 'name' : 'ObjectType', 'value' : multiAttr_sheet.values[j-1][0]},
-                        { 'name' : 'ScenarioName', 'value' : multiAttr_sheet.values[j-1][2]},
-                        { 'name' : 'SourceName', 'value' : multiAttr_sheet.values[j-1][4]},
-                        { 'name' : 'MethodName', 'value' : multiAttr_sheet.values[j-1][5]}
-                    ]
+                    dataset['value'] = json.dumps(array_value)
+                    # print dataset
+                    # dataset['metadata'] = [
+                    #     { 'name' : 'ObjectType', 'value' : multiAttr_sheet.values[j-1][0]},
+                    #     { 'name' : 'ScenarioName', 'value' : multiAttr_sheet.values[j-1][2]},
+                    #     { 'name' : 'SourceName', 'value' : multiAttr_sheet.values[j-1][4]},
+                    #     { 'name' : 'MethodName', 'value' : multiAttr_sheet.values[j-1][5]}
+                    # ]
 
                     rs['value'] = dataset
                     list_rs.append(rs)
