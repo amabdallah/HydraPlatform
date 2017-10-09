@@ -47,10 +47,10 @@ log = logging.getLogger(__name__)
 
 # Connect to the Hydra server on the local machine
 # More info: http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html#creating-a-client
-url = "http://localhost:8080/"
+url = "http://server.test.hydra.org.uk/"
 conn = JsonConnection(url)
 # connects by default to 'localhost:8080'
-conn.login("root", "")
+conn.login("MYUSER", "PASSWORD")
 
 # STEP 2: Import the WaMDaM workbook sheets
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
@@ -173,10 +173,11 @@ flag_exist_template = False
 for template_item in tempDB:
     if template_item['name'] == template['name']:
         flag_exist_template = True
-        conn.call('delete_template', {'template_id' : template_item['id']})
+        new_template = conn.call('get_template', {'template_id' : template_item['id']})
         break
-# if not flag_exist_template:
-conn.call('add_template', {'tmpl': template})
+else:
+    # if not flag_exist_template:
+    new_template = conn.call('add_template', {'tmpl': template})
 
 
 # Build up a dict by attribute names to call them later.
@@ -203,10 +204,15 @@ for j in range(len(attr_sheet)):
 # add_network
 network_sheet = wamdam_data['3.1_Networks&Scenarios']
 
-network_template = {'name': network_sheet.values[8][0], 'description': network_sheet.values[8][4],
-                    'project_id': proj_id}
+for templateType in new_template['types']:
+        if templateType['resource_type'] == 'NETWORK':
+            type_id = templateType['id'] 
+            break
 
-print proj_id
+
+network_template = {'name': network_sheet.values[8][0], 'description': network_sheet.values[8][4],
+                    'project_id': my_new_project.id, 'types': [{'id': type_id}]}
+
 # add_nodes
 nodes_sheet = wamdam_data['3.2_Nodes']
 
@@ -223,11 +229,9 @@ for i in range(len(nodes_sheet)):
     if i < 8: continue  # Avoid headers before line 9 in the nodes sheet
 
     # Look up the type_id in Hydra for each type
-    type_id_index = 0
-    for templateType in template['types']:
-        type_id_index += 1
+    for templateType in new_template['types']:
         if nodes_sheet.values[i][0] == templateType['name']:
-            type_id = type_id_index
+            type_id = templateType['id'] 
             break
 
     if type_id is None:
@@ -242,8 +246,15 @@ for i in range(len(nodes_sheet)):
     description = str(nodes_sheet.values[i][9])
     if description == "nan":
         description = ""
+
+    name =  nodes_sheet.values[i][1]
+
+    if len(name) > 60:
+        log.warn('Node name %s too long. Truncating)', name)
+        name = name[0:57] + "..."
+
     node = {'id': i * -1,
-            'name': nodes_sheet.values[i][1],
+            'name': name,
             'description': description,
             'x': str(nodes_sheet.values[i][7]),
             'y': str(nodes_sheet.values[i][8]),
@@ -279,11 +290,9 @@ type_id = None
 for i in range(len(links_sheet)):
     if i < 8: continue  # Avoid headers before line 9 in the links sheet
 
-    type_id_index = 0
-    for templateType in template['types']:
-        type_id_index += 1
+    for templateType in new_template['types']:
         if links_sheet.values[i][0] == templateType['name']:
-            type_id = type_id_index
+            type_id = templateType['id']
             break
 
     if type_id is None:
@@ -291,9 +300,16 @@ for i in range(len(links_sheet)):
     description = str(links_sheet.values[i][9])
     if description == "nan":
         description = ""
+
+    name = links_sheet.values[i][1]
+
+    if len(name) > 60:
+        log.warn('Link name %s too long. Truncating)', name)
+        name = name[0:57] + "..."
+
     link = {
         'id': i * -1,
-        'name': links_sheet.values[i][1],
+        'name': name,
         'description': description,
         'types': [{'id': type_id}]
     }
@@ -647,7 +663,6 @@ for i in range(18, len(network_sheet)):
     # scenario['resourcescenarios'] = list_rs
     # list_scenario.append(scenario)
 
-print list_scenario
 network_template['scenarios'] = list_scenario
 
 network = conn.call('add_network', {'net':network_template})
