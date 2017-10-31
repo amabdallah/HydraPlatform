@@ -1,6 +1,5 @@
 # coding: utf-8
 
-
 # This file builds a hydra template from the wamdam workbook.
 # The file intends to export WaMDaM data that exist in the workbook
 # into Hydra database
@@ -14,8 +13,6 @@
 # Step 3: Define a project in Hydra. Add the template "dataset name", Object Types and Attribuets in Hydra
 # Step 4: Import WaMDaM Network, Nodes, and links
 # Step 5: Import Scenarios and Data Values of Attributes for Nodes and links
-
-
 
 import pandas as pd
 import os
@@ -47,17 +44,27 @@ log = logging.getLogger(__name__)
 
 # Connect to the Hydra server on the local machine
 # More info: http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html#creating-a-client
-url = "http://server.test.hydra.org.uk/"
+
+#url = "http://server.test.hydra.org.uk/"
+#conn = JsonConnection(url)
+# # connects by default to 'localhost:8080'
+#conn.login("amabdallah@aggiemail.usu.edu", "Hydra2017")
+
+
+url = "http://localhost:8080/"
 conn = JsonConnection(url)
 # connects by default to 'localhost:8080'
-conn.login("MYUSER", "PASSWORD")
+conn.login("root", "")
+
 
 # STEP 2: Import the WaMDaM workbook sheets
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 
 # Load the excel file into pandas
-wamdam_data = pd.read_excel('WEAP_Sept22.xlsm', sheetname=None)
+# wamdam_data = pd.read_excel('WEAP_Sept22.xlsm', sheetname=None)
+# wamdam_data = pd.read_excel('WASH_August10.xlsm', sheetname=None)
+wamdam_data = pd.read_excel('WEAP_test2.xlsm', sheetname=None)
 
 # This returns an object, which is a dictionary of pandas 'dataframe'.
 # The keys are sheet names and the dataframes are the sheets themselves.
@@ -205,9 +212,9 @@ for j in range(len(attr_sheet)):
 network_sheet = wamdam_data['3.1_Networks&Scenarios']
 
 for templateType in new_template['types']:
-        if templateType['resource_type'] == 'NETWORK':
-            type_id = templateType['id'] 
-            break
+    if templateType['resource_type'] == 'NETWORK':
+        type_id = templateType['id']
+        break
 
 
 network_template = {'name': network_sheet.values[8][0], 'description': network_sheet.values[8][4],
@@ -224,6 +231,31 @@ resource_attr_lookup = {}
 dict_res_attr = {}
 type_id = None
 res_id = -1
+
+# /////make dict_res_attr for network//////////
+
+
+for j in range(len(attr_sheet)):
+    if j < 9: continue  # Avoid headers before line 9 in the attribute sheet
+    for templateType in new_template['types']:
+        if templateType['resource_type'] == 'NETWORK':
+            if attr_sheet.values[j][0] == templateType['name']:
+                name = attr_sheet.values[j][1]
+                dimension = attr_sheet.values[j][3]
+
+            # res_id = (len(list_res_attr) + 1) * -1
+
+                res_attr = {
+                    'ref_key': 'NETWORK',
+                    'attr_id': all_attr_dict[name]['id'],
+                    'id': res_id,
+                }
+                res_id -= 1
+                # resource_attr_lookup[('NETWORK', res_id)] = res_attr
+                # node_res_attr.append(res_attr)
+                dict_res_attr[(network_template['name'], name)] = res_attr
+# ///////////////////////////////////////////////////////////////////////////////////////
+
 # Iterate over the node instances and assign the parent Object Attributes to each node instance = ResourceAttribute (as in Hydra)
 for i in range(len(nodes_sheet)):
     if i < 8: continue  # Avoid headers before line 9 in the nodes sheet
@@ -231,7 +263,7 @@ for i in range(len(nodes_sheet)):
     # Look up the type_id in Hydra for each type
     for templateType in new_template['types']:
         if nodes_sheet.values[i][0] == templateType['name']:
-            type_id = templateType['id'] 
+            type_id = templateType['id']
             break
 
     if type_id is None:
@@ -287,6 +319,7 @@ link_lookup = {}
 links_sheet = wamdam_data['3.3_Links']
 list_link = []
 type_id = None
+lst_name = []
 for i in range(len(links_sheet)):
     if i < 8: continue  # Avoid headers before line 9 in the links sheet
 
@@ -302,6 +335,11 @@ for i in range(len(links_sheet)):
         description = ""
 
     name = links_sheet.values[i][1]
+    if name in lst_name:
+        print name
+        continue
+    else:
+        lst_name.append(name)
 
     if len(name) > 60:
         log.warn('Link name %s too long. Truncating)', name)
@@ -348,7 +386,7 @@ for i in range(len(links_sheet)):
 
 network_template['links'] = list_link
 network_template['resourcegroups'] = []
-
+# network = conn.call('add_network', {'net':network_template})
 ## Load the Network, its nodes, and links to the Hydra db
 
 # http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html#scenarios-and-data
@@ -625,6 +663,7 @@ for i in range(18, len(network_sheet)):
                     if (multiAttr_sheet.values[j][1], multiAttr_sheet.values[j][3]) in dict_res_attr.keys():
                         rs = {'resource_attr_id': dict_res_attr[(multiAttr_sheet.values[j][1], multiAttr_sheet.values[j][3])]['id']}
                     else:
+                        continue
                         raise Exception("Unable to find resource_attr_id for %s" % Descriptor_sheet.values[j][3])
                     dataset = {'type': 'array', 'name': multiAttr_sheet.values[j][3], 'unit': 'ml', 'dimension': dimension, 'hidden': 'N'}
 
