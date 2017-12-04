@@ -54,7 +54,7 @@ log = logging.getLogger(__name__)
 url = "http://localhost:8080/"
 conn = JsonConnection(url)
 # connects by default to 'localhost:8080'
-conn.login("root", "")
+conn.login("admin@hydra.org.uk", "P@$$W0RD")
 
 
 # STEP 2: Import the WaMDaM workbook sheets
@@ -234,7 +234,7 @@ res_id = -1
 
 # /////make dict_res_attr for network//////////
 
-
+network_res_attr = []
 for j in range(len(attr_sheet)):
     if j < 9: continue  # Avoid headers before line 9 in the attribute sheet
     for templateType in new_template['types']:
@@ -252,8 +252,9 @@ for j in range(len(attr_sheet)):
                 }
                 res_id -= 1
                 # resource_attr_lookup[('NETWORK', res_id)] = res_attr
-                # node_res_attr.append(res_attr)
+                network_res_attr.append(res_attr)
                 dict_res_attr[(network_template['name'], name)] = res_attr
+network_template['attributes'] = network_res_attr
 # ///////////////////////////////////////////////////////////////////////////////////////
 
 # Iterate over the node instances and assign the parent Object Attributes to each node instance = ResourceAttribute (as in Hydra)
