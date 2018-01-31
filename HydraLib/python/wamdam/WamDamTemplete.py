@@ -146,6 +146,10 @@ for i in range(len(type_sheet)):
         break
     #  type_sheet.values[i + 16][0]--ObjectType
     #  type_sheet.values[i + 16][1]--ObjectTypology
+
+#  Based on the link below, add a layout =Icon
+# http://umwrg.github.io/HydraPlatform/devdocs/HydraServer/index.html?highlight=typeattrs#HydraServer.soap_server.hydra_complexmodels.TemplateType
+   
     mytemplatetype = {'resource_type': type_sheet.values[i + 16][1].upper(), 'name': type_sheet.values[i + 16][0],
                       'typeattrs': [], 'type_id': i+1}
     #  insert the value of the ObjectTypology from excel. also insert the value of the ObjectType from excel
@@ -165,6 +169,8 @@ for i in range(len(type_sheet)):
             else:
                 attr_id = all_attr_dict[attr_name]['id']
             # connect the Template Type (ObjectType) with its Attributes
+# Based on the link below, add a unit =AttributeUnit, and a datatype=AttributeDataTypeCV 
+# http://umwrg.github.io/HydraPlatform/devdocs/HydraServer/index.html?highlight=typeattrs#HydraServer.soap_server.hydra_complexmodels.TypeAttr
             mytemplatetype['typeattrs'].append({'type_id': i + 1, 'attr_id': attr_id})  # type_id for the template table
 
     # --------------------------------------------
