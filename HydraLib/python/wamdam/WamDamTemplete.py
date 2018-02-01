@@ -1,5 +1,6 @@
 # coding: utf-8
 
+
 # This file builds a hydra template from the wamdam workbook.
 # The file intends to export WaMDaM data that exist in the workbook
 # into Hydra database
@@ -14,8 +15,11 @@
 # Step 4: Import WaMDaM Network, Nodes, and links
 # Step 5: Import Scenarios and Data Values of Attributes for Nodes and links
 
+
+
 import pandas as pd
 import os
+from json import loads
 
 # set the path to the Hydra repository to import its libraries
 import sys
@@ -44,17 +48,15 @@ log = logging.getLogger(__name__)
 
 # Connect to the Hydra server on the local machine
 # More info: http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html#creating-a-client
-
-#url = "http://server.test.hydra.org.uk/"
-#conn = JsonConnection(url)
-# # connects by default to 'localhost:8080'
-#conn.login("amabdallah@aggiemail.usu.edu", "Hydra2017")
-
-
-url = "http://localhost:8080/"
+url = "http://127.0.0.1:8080"
 conn = JsonConnection(url)
 # connects by default to 'localhost:8080'
-conn.login("admin@hydra.org.uk", "P@$$W0RD")
+conn.login("root", "")
+
+
+
+all_attributes = conn.call('get_all_attributes', ({}))
+
 
 
 # STEP 2: Import the WaMDaM workbook sheets
@@ -62,9 +64,7 @@ conn.login("admin@hydra.org.uk", "P@$$W0RD")
 
 
 # Load the excel file into pandas
-# wamdam_data = pd.read_excel('WEAP_Sept22.xlsm', sheetname=None)
-# wamdam_data = pd.read_excel('WASH_August10.xlsm', sheetname=None)
-wamdam_data = pd.read_excel('WEAP_test2.xlsm', sheetname=None)
+wamdam_data = pd.read_excel('./WEAP_test3.xlsm', sheetname=None)
 
 # This returns an object, which is a dictionary of pandas 'dataframe'.
 # The keys are sheet names and the dataframes are the sheets themselves.
@@ -141,6 +141,7 @@ my_templates = conn.call('get_template_attributes', {})
 # 2.1_Datasets&ObjectTypes sheet, look in the ObjectTypes_table
 
 # iterate to get the object types and their attributes
+# start reading from row 16 because value is staring from 16 row.
 for i in range(len(type_sheet)):
     if type_sheet.values[i + 16][0] == "" or str(type_sheet.values[i + 16][0]) == "nan" :
         break
@@ -149,10 +150,25 @@ for i in range(len(type_sheet)):
 
 #  Based on the link below, add a layout =Icon
 # http://umwrg.github.io/HydraPlatform/devdocs/HydraServer/index.html?highlight=typeattrs#HydraServer.soap_server.hydra_complexmodels.TemplateType
-   
+
+    # read value of layout from  "Layout" column in 2.1_Datasets&ObjectTypes.
+
+    value_of_layout_in_type_sheet = {}
+    #  type_sheet.values[i + 16][4]--Layout
+    if type_sheet.values[i + 16][4] != "" and str(type_sheet.values[i + 16][4]) != "nan":
+        try:
+            value_of_layout_in_type_sheet = loads('{' + type_sheet.values[i + 16][4] + '}')
+        except:
+            raise Exception('JSON parse ERROR:\n Can not parse layout data of {} column, {} row in 2.1_Datasets&ObjectTypes to JSON data. Please check.'.format('4', str(i + 16)))
+    #----------reading end-------------------------#
+
     mytemplatetype = {'resource_type': type_sheet.values[i + 16][1].upper(), 'name': type_sheet.values[i + 16][0],
                       'typeattrs': [], 'type_id': i+1}
     #  insert the value of the ObjectTypology from excel. also insert the value of the ObjectType from excel
+
+    # add value of layout in mytemplatetype.
+    mytemplatetype['layout'] = value_of_layout_in_type_sheet
+    #-------- adding end ------------------#
 
     # -------------------------------------
     for j in range(len(attr_sheet)):
@@ -161,17 +177,26 @@ for i in range(len(type_sheet)):
         #  attr_sheet.values[j][3]--AttributeUnit
         if type_sheet.values[i + 16][0] == attr_sheet.values[j][0]:
             attr_name = attr_sheet.values[j][1]
-            attr_dimension = attr_sheet.values[j][3]
+            attr_dimension = attr_sheet.values[j][5]
             if all_attr_dict.get(attr_name) is None:
-                attr_id = conn.call('add_attribute',
-                                    {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][3]}})[
-                    'id']
+                attr_id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][5]}})['id']
             else:
                 attr_id = all_attr_dict[attr_name]['id']
             # connect the Template Type (ObjectType) with its Attributes
-# Based on the link below, add a unit =AttributeUnit, and a datatype=AttributeDataTypeCV 
+# Based on the link below, add a unit =AttributeUnit, and a datatype=AttributeDataTypeCV
 # http://umwrg.github.io/HydraPlatform/devdocs/HydraServer/index.html?highlight=typeattrs#HydraServer.soap_server.hydra_complexmodels.TypeAttr
-            mytemplatetype['typeattrs'].append({'type_id': i + 1, 'attr_id': attr_id})  # type_id for the template table
+
+            # read value of unit from  "AttributeUnit" column in 2.2_Attributes.
+            attr_unit = attr_sheet.values[j][3]
+            if not attr_unit:
+                attr_unit = ''
+            # read value of datatype from  "AttributeDataTypeCV" column in 2.2_Attributes.
+            attr_datatype = attr_sheet.values[j][6]
+            if not attr_datatype:
+                attr_datatype = ''
+            # ------------------------------------------
+
+            mytemplatetype['typeattrs'].append({'type_id': i + 1, 'attr_id': attr_id, 'unit': attr_unit, 'datatype': attr_datatype})  # type_id for the template table
 
     # --------------------------------------------
 
@@ -180,7 +205,6 @@ for i in range(len(type_sheet)):
     template['types'].append(mytemplatetype)
 
 ## Load the Template name and types to the Hydra db
-
 tempDB = conn.call('get_templates', {})
 flag_exist_template = False
 for template_item in tempDB:
@@ -198,12 +222,11 @@ else:
 for j in range(len(attr_sheet)):
     if j < 9: continue  # Avoid headers before line 9 in the nodes sheet
     name = attr_sheet.values[j][1]
-    dimension = attr_sheet.values[j][3]
+    dimension = attr_sheet.values[j][5]
 
 ## Load the Attributes to the Hydra db
     if all_attr_dict.get(name) is None:
-        id = \
-        conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][3]}})[
+        id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][5]}})[
             'id']
         all_attr_dict[name] = {'id': id, 'dimension': dimension}
 
@@ -247,7 +270,7 @@ for j in range(len(attr_sheet)):
         if templateType['resource_type'] == 'NETWORK':
             if attr_sheet.values[j][0] == templateType['name']:
                 name = attr_sheet.values[j][1]
-                dimension = attr_sheet.values[j][3]
+                dimension = attr_sheet.values[j][5]
 
             # res_id = (len(list_res_attr) + 1) * -1
 
@@ -303,7 +326,7 @@ for i in range(len(nodes_sheet)):
     for j in range(len(attr_sheet)):
         if nodes_sheet.values[i][0] == attr_sheet.values[j][0]:
             name = attr_sheet.values[j][1]
-            dimension = attr_sheet.values[j][3]
+            dimension = attr_sheet.values[j][5]
 
             # res_id = (len(list_res_attr) + 1) * -1
 
@@ -373,7 +396,7 @@ for i in range(len(links_sheet)):
     for j in range(len(attr_sheet)):
         if links_sheet.values[i][0] == attr_sheet.values[j][0]:
             name = attr_sheet.values[j][1]
-            dimension = attr_sheet.values[j][3]
+            dimension = attr_sheet.values[j][5]
 
             # res_id = (len(list_res_attr) + 1) * -1
 
@@ -437,7 +460,7 @@ for i in range(len(network_sheet)):
                 raise Exception("Unable to find resource_attr_id for %s" % numerical_sheet.values[j][3])
 
             dataset = {'type': 'descriptor', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
-                       'hidden': 'N', 'value': str(numerical_sheet.values[j][6])}
+                       'hidden': 'Y', 'value': str(numerical_sheet.values[j][6])}
             # The provided dimension here must match the attribute as defined earlier.
 
             rs['value'] = dataset
@@ -481,7 +504,7 @@ for i in range(len(network_sheet)):
                 raise Exception("Unable to find resource_attr_id for %s" % Descriptor_sheet.values[j][3])
 
             dataset = {'type': 'descriptor', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
-                       'hidden': 'N', 'value': Descriptor_sheet.values[j][6]}
+                       'hidden': 'Y', 'value': Descriptor_sheet.values[j][6]}
             # The provided dimension here must match the attribute as defined earlier.
 
             rs['value'] = dataset
@@ -529,7 +552,7 @@ for i in range(len(network_sheet)):
                 raise Exception("Unable to find resource_attr_id for %s" % Descriptor_sheet.values[j][3])
 
             dataset = {'type': 'descriptor', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
-                       'hidden': 'N', 'value': str(Descriptor_sheet.values[j][6])}
+                       'hidden': 'Y', 'value': str(Descriptor_sheet.values[j][6])}
             # The provided dimension here must match the attribute as defined earlier.
 
             rs['value'] = dataset
@@ -598,7 +621,7 @@ for i in range(len(network_sheet)):
         # rs = {'resource_attr_id': all_attr_dict[attr_name]['id']}
 
         dataset = {'type': 'timeseries', 'name': attr_name, 'unit': 'ml', 'dimension': dimension,
-                   'hidden': 'N', 'value': json.dumps(timeseries)}
+                   'hidden': 'Y', 'value': json.dumps(timeseries)}
         # The provided dimension here must match the attribute as defined earlier.
 
         rs['value'] = dataset
@@ -672,7 +695,7 @@ for i in range(18, len(network_sheet)):
                     else:
                         continue
                         raise Exception("Unable to find resource_attr_id for %s" % Descriptor_sheet.values[j][3])
-                    dataset = {'type': 'array', 'name': multiAttr_sheet.values[j][3], 'unit': 'ml', 'dimension': dimension, 'hidden': 'N'}
+                    dataset = {'type': 'array', 'name': multiAttr_sheet.values[j][3], 'unit': 'ml', 'dimension': dimension, 'hidden': 'Y'}
 
                     dataset['value'] = json.dumps(array_value)
                     # print dataset
