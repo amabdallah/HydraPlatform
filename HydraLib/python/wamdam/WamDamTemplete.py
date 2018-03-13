@@ -126,6 +126,8 @@ all_attr_dict = {}
 for a in all_attributes:
     all_attr_dict[a.name] = {'id': a.id, 'dimension': a.dimen}
 
+
+
 # -------------------------
 
 # Create a new template (dataset)
@@ -142,8 +144,46 @@ template = {'name': type_sheet.values[8][0], 'types': []}  # insert the value of
 # Go through this worksheet, building a hydra template
 my_templates = conn.call('get_template_attributes', {})
 
-# -----------------------------
 
+#
+# Add units and their dim. Look up all the excel sheet, find the units and their dim
+unites = []
+dimensions = []
+Server_dims=conn.call('get_all_dimensions', {})
+Sever_dimensions = []
+for dim in Server_dims:
+    Sever_dimensions.append(dim['name'])
+
+Server_dims=conn.call('get_all_dimensions', {})
+for j in range(len(attr_sheet)):
+    if j < 9: continue # avoid headers in excel
+    attr_unit = attr_sheet.values[j][3] # Attribute unit name in Excel
+    attr_dimension = attr_sheet.values[j][5] # UnitType in excel
+    if not attr_dimension in Sever_dimensions:
+        result = conn.call('add_dimension', {'dimension': attr_dimension})
+        dimensions.append(attr_dimension)
+
+    result_get = conn.call('get_units', {'dimension': attr_dimension})
+    print result_get
+
+    is_unit_exist = False
+    for unit in result_get:
+        if attr_unit == unit['name']:
+            is_unit_exist = True
+            break
+
+    if not is_unit_exist:
+        unites.append(attr_unit)
+        new_unit = {'name': attr_unit, 'dimension': attr_dimension, 'abbr': 'none'} #
+
+        print new_unit
+        result_unit = conn.call('add_unit', {'unit': new_unit})
+        result_get = conn.call('get_units', {'dimension': attr_dimension})
+        print result_get
+
+
+
+# -----------------------------
 # Go through the excel sheet and pull out the template type definitions...
 # a template type in Hydra is equivalent to an Object Type in WaMDaM
 # resource_type in Hydra is equivalent to an ObjectTypology in WaMDaM
@@ -189,10 +229,11 @@ for i in range(len(type_sheet)):
         if type_sheet.values[i + 16][0] == attr_sheet.values[j][0]:
             attr_name = attr_sheet.values[j][1]
             attr_dimension = attr_sheet.values[j][5]
-            if all_attr_dict.get(attr_name, attr_dimension) is None:
-                attr_id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][5]}})['id']
+            if not attr_name in all_attr_dict.keys() or all_attr_dict[attr_name]['dimension'] != attr_dimension:
+                attr_id = conn.call('add_attribute', {'attr': {'name': attr_name, 'dimen': attr_dimension}})['id']
             else:
-                attr_id = all_attr_dict[attr_name]['id'] # use also the dimen to get the attribute ID
+                tem = all_attr_dict.get(attr_name, attr_dimension)
+                attr_id = tem['id']
 
             # connect the Template Type (ObjectType) with its Attributes
 # Based on the link below, add a unit =AttributeUnit, and a datatype=AttributeDataTypeCV
@@ -222,13 +263,15 @@ for i in range(len(type_sheet)):
             elif attr_datatype == 'AttributeSeries':
                  attr_datatype = 'array'
 
-            mytemplatetype['typeattrs'].append({'type_id': i + 1, 'attr_is_var':True,'attr_id': attr_id,'data_type': attr_datatype})  # type_id for the template table
-#,'unit': attr_unit
+            mytemplatetype['typeattrs'].append({'type_id': i + 1, 'attr_is_var':True,'attr_id': attr_id,'data_type': attr_datatype,'unit': attr_unit})  # type_id for the template table
+# ,
     # --------------------------------------------
 
 
     # Add some object types to the Template Type  (resource type can be NODE, LINK, GROUP, NETWORK)
     template['types'].append(mytemplatetype)
+
+
 
 ## Load the Template name and types to the Hydra db
 tempDB = conn.call('get_templates', {})
@@ -250,11 +293,13 @@ for j in range(len(attr_sheet)):
     name = attr_sheet.values[j][1]
     dimension = attr_sheet.values[j][5]
 
-## Load the Attributes to the Hydra db
-    if all_attr_dict.get(name) is None:
+## Load the Attributes to the Hydra db. Check if they exist in the server. if they dont, then add them
+    if not all_attr_dict.get(name,dimension) :
         id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][5]}})[
             'id']
         all_attr_dict[name] = {'id': id, 'dimension': dimension}
+    else:
+        pass
 
 # STEP 4: Import WaMDaM Network, Nodes, and links
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
@@ -335,15 +380,17 @@ for i in range(len(nodes_sheet)):
     if description == "nan":
         description = ""
 
-    name =  nodes_sheet.values[i][1]
+    fullname =  nodes_sheet.values[i][1]
+    nameShort =  nodes_sheet.values[i][1]
 
-    if len(name) > 60:
-        log.warn('Node name %s too long. Truncating)', name)
-        name = name[0:57] + "..."
+    if len(nameShort) > 60:
+        log.warn('Node name %s too long. Truncating)', nameShort)
+        nameShort = nameShort[0:57] + "..."
 
     node = {'id': i * -1,
-            'name': name,
+            'name': nameShort,
             'description': description,
+            'layout':{'display_name':fullname},
             'x': str(nodes_sheet.values[i][7]),
             'y': str(nodes_sheet.values[i][8]),
             'types': [{'id': type_id}]
@@ -391,6 +438,8 @@ for i in range(len(links_sheet)):
         description = ""
 
     name = links_sheet.values[i][1]
+    fullname = links_sheet.values[i][1]
+
     if name in lst_name:
         print name
         continue
@@ -401,10 +450,12 @@ for i in range(len(links_sheet)):
         log.warn('Link name %s too long. Truncating)', name)
         name = name[0:57] + "..."
 
+
     link = {
         'id': i * -1,
         'name': name,
         'description': description,
+        'layout': {'display_name': fullname},
         'types': [{'id': type_id}]
     }
     node_a = node_lookup.get(links_sheet.values[i][6])
