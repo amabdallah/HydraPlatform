@@ -75,7 +75,7 @@ get_all_dimensions=conn.call('get_all_dimensions', ({}))
 
 # Load the excel file into pandas
 # wamdam_data = pd.read_excel('./wash_test.xlsm', sheetname=None)
-wamdam_data = pd.read_excel('./WEAP_test3.xlsm', sheetname=None)
+wamdam_data = pd.read_excel('./WEAP_March12.xlsm', sheetname=None)
 
 # This returns an object, which is a dictionary of pandas 'dataframe'.
 # The keys are sheet names and the dataframes are the sheets themselves.
@@ -192,7 +192,7 @@ for i in range(len(type_sheet)):
             if all_attr_dict.get(attr_name, attr_dimension) is None:
                 attr_id = conn.call('add_attribute', {'attr': {'name': attr_sheet.values[j][1], 'dimen': attr_sheet.values[j][5]}})['id']
             else:
-                attr_id = all_attr_dict[attr_name]['id']
+                attr_id = all_attr_dict[attr_name]['id'] # use also the dimen to get the attribute ID
 
             # connect the Template Type (ObjectType) with its Attributes
 # Based on the link below, add a unit =AttributeUnit, and a datatype=AttributeDataTypeCV
@@ -621,7 +621,7 @@ for i in range(len(network_sheet)):
     scenario = {'name': network_sheet.values[i][0], 'description': network_sheet.values[i][8], 'resourcescenarios': []}
     list_rs = []
 
-    # Iterate over the rows in the TimeSeriesValues sheet [scalars dataset] and associate the value with resource attribute
+    # Iterate over the rows in the TimeSeriesValues sheet [dataset] and associate the value with resource attribute
     # (node instance and attribute)
     timeseries_list = {}
     for j in range(8, len(TimeSeriesValues_sheet)):  # //8: reall value row in sheet
