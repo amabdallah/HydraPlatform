@@ -49,15 +49,15 @@ log = logging.getLogger(__name__)
 # Connect to the Hydra server on the local machine
 # More info: http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html#creating-a-client
 # url = "http://127.0.0.1:8080"
-# conn = JsonConnection(url)
+# conn = JsonConnection(ur)
 # # connects by default to 'localhost:8080'
 # conn.login("root", "")
 
 # Connect to the Hydra server on the local machine
 # More info: http://umwrg.github.io/HydraPlatform/tutorials/plug-in/tutorial_json.html#creating-a-client
-url = "https://data.openagua.org"
+url = "http://localhost:8080/json"
 conn = JsonConnection(url)
-login_response = conn.login('amabdallah@aggiemail.usu.edu', 'TestOpenAgua!')
+login_response = conn.login("root", "")
 
 
 # url = "http://server.basinit.hydra.org.uk/"
@@ -149,16 +149,12 @@ my_templates = conn.call('get_template_attributes', {})
 # Add units and their dim. Look up all the excel sheet, find the units and their dim
 unites = []
 dimensions = []
-Server_dims=conn.call('get_all_dimensions', {})
-Sever_dimensions = []
-for dim in Server_dims:
-    Sever_dimensions.append(dim['name'])
+Sever_dimensions=conn.call('get_dimensions', {})
 
-Server_dims=conn.call('get_all_dimensions', {})
 for j in range(len(attr_sheet)):
     if j < 9: continue # avoid headers in excel
-    attr_unit = attr_sheet.values[j][3] # Attribute unit name in Excel
-    attr_dimension = attr_sheet.values[j][5] # UnitType in excel
+    attr_unit = attr_sheet.values[j][3].strip() # Attribute unit name in Excel
+    attr_dimension = attr_sheet.values[j][5].strip() # UnitType in excel
     if not attr_dimension in Sever_dimensions:
         result = conn.call('add_dimension', {'dimension': attr_dimension})
         dimensions.append(attr_dimension)
@@ -174,7 +170,7 @@ for j in range(len(attr_sheet)):
 
     if not is_unit_exist:
         unites.append(attr_unit)
-        new_unit = {'name': attr_unit, 'dimension': attr_dimension, 'abbr': 'none'} #
+        new_unit = {'name': attr_unit, 'dimension': attr_dimension, 'abbr': attr_unit, 'lf': 1, 'cf': 0} #
 
         print new_unit
         result_unit = conn.call('add_unit', {'unit': new_unit})
@@ -228,7 +224,7 @@ for i in range(len(type_sheet)):
         #  attr_sheet.values[j][3]--AttributeUnit
         if type_sheet.values[i + 16][0] == attr_sheet.values[j][0]:
             attr_name = attr_sheet.values[j][1]
-            attr_dimension = attr_sheet.values[j][5]
+            attr_dimension = attr_sheet.values[j][5].strip()
             if not attr_name in all_attr_dict.keys() or all_attr_dict[attr_name]['dimension'] != attr_dimension:
                 attr_id = conn.call('add_attribute', {'attr': {'name': attr_name, 'dimen': attr_dimension}})['id']
             else:
@@ -291,7 +287,7 @@ else:
 for j in range(len(attr_sheet)):
     if j < 9: continue  # Avoid headers before line 9 in the nodes sheet
     name = attr_sheet.values[j][1]
-    dimension = attr_sheet.values[j][5]
+    dimension = attr_sheet.values[j][5].strip()
 
 ## Load the Attributes to the Hydra db. Check if they exist in the server. if they dont, then add them
     if not all_attr_dict.get(name,dimension) :
